@@ -1,0 +1,494 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="theme-color" content="#0f172a">
+    <title>Universal Video Hub · 手機影音下載器</title>
+    <style>
+        :root {
+            --bg-color: #0f172a;
+            --card-bg: #1e293b;
+            --card-border: #334155;
+            --text-main: #f8fafc;
+            --text-sub: #94a3b8;
+            --primary: #2563eb;
+            --primary-hover: #1d4ed8;
+            --accent: #38bdf8;
+            --success: #10b981;
+            --success-hover: #059669;
+            --warn: #f59e0b;
+            --input-bg: #0f172a;
+            --input-border: #475569;
+            --terminal-bg: #020617;
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Microsoft JhengHei", sans-serif; }
+        body {
+            background: radial-gradient(circle at top, #1e293b 0%, var(--bg-color) 65%);
+            color: var(--text-main);
+            padding: 18px 14px 32px;
+            display: flex;
+            justify-content: center;
+            min-height: 100vh;
+        }
+        .container { width: 100%; max-width: 500px; }
+        .card {
+            background: var(--card-bg);
+            border: 1px solid var(--card-border);
+            border-radius: 16px;
+            padding: 20px;
+            margin-bottom: 14px;
+            box-shadow: 0 12px 28px -8px rgba(0, 0, 0, 0.45);
+        }
+        .header { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; margin-bottom: 14px; }
+        h1 { font-size: 20px; font-weight: 700; color: var(--accent); margin-bottom: 4px; }
+        p.desc { font-size: 12px; color: var(--text-sub); line-height: 1.4; }
+        .badge {
+            font-size: 11px;
+            font-weight: 600;
+            padding: 4px 10px;
+            border-radius: 999px;
+            white-space: nowrap;
+            background: rgba(56, 189, 248, 0.14);
+            color: var(--accent);
+            border: 1px solid rgba(56, 189, 248, 0.35);
+        }
+        .badge.connected {
+            background: rgba(16, 185, 129, 0.15);
+            color: #34d399;
+            border-color: rgba(16, 185, 129, 0.4);
+        }
+        .mode-tabs {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 8px;
+            margin-bottom: 16px;
+            background: var(--input-bg);
+            padding: 4px;
+            border-radius: 12px;
+            border: 1px solid var(--card-border);
+        }
+        .tab-btn {
+            background: transparent;
+            color: var(--text-sub);
+            border: none;
+            padding: 9px 8px;
+            border-radius: 9px;
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: 0.15s;
+        }
+        .tab-btn.active { background: var(--primary); color: #fff; }
+        .input-group { margin-bottom: 14px; }
+        label { display: block; font-size: 12px; font-weight: 600; color: var(--text-sub); margin-bottom: 6px; }
+        input[type="text"], input[type="url"], select {
+            width: 100%;
+            padding: 12px 13px;
+            font-size: 14px;
+            border-radius: 10px;
+            border: 1.5px solid var(--input-border);
+            background: var(--input-bg);
+            color: var(--text-main);
+            outline: none;
+        }
+        input:focus, select:focus { border-color: var(--accent); }
+        .btn-row { display: flex; gap: 8px; margin-top: 8px; }
+        button {
+            border: none;
+            border-radius: 10px;
+            font-weight: 600;
+            font-size: 14px;
+            cursor: pointer;
+            transition: 0.15s;
+        }
+        .btn-primary {
+            background: var(--primary);
+            color: #fff;
+            padding: 13px;
+            width: 100%;
+            font-size: 15px;
+        }
+        .btn-primary:hover { background: var(--primary-hover); }
+        .btn-primary:disabled { background: #475569; cursor: not-allowed; }
+        .btn-secondary {
+            background: #334155;
+            color: var(--text-main);
+            padding: 10px 12px;
+            font-size: 13px;
+        }
+        .btn-secondary:hover { background: #475569; }
+        .progress-bar {
+            width: 100%;
+            height: 10px;
+            background: var(--input-bg);
+            border-radius: 5px;
+            overflow: hidden;
+            margin: 14px 0 8px;
+            display: none;
+        }
+        .progress-fill {
+            height: 100%;
+            width: 0%;
+            background: linear-gradient(90deg, var(--primary), var(--accent));
+            transition: width 0.2s;
+        }
+        .status-txt { font-size: 13px; color: var(--accent); min-height: 18px; margin-top: 8px; line-height: 1.45; }
+        .download-box { margin-top: 14px; display: none; }
+        .download-link {
+            display: block;
+            text-align: center;
+            text-decoration: none;
+            background: var(--success);
+            color: #fff;
+            padding: 13px;
+            border-radius: 10px;
+            font-weight: 700;
+            margin-bottom: 8px;
+            font-size: 14px;
+        }
+        .download-link.alt { background: #6366f1; }
+        .terminal {
+            background: var(--terminal-bg);
+            color: #cbd5e1;
+            font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+            font-size: 11px;
+            padding: 12px;
+            border-radius: 10px;
+            height: 140px;
+            overflow-y: auto;
+            white-space: pre-wrap;
+            line-height: 1.45;
+            border: 1px solid var(--card-border);
+        }
+        .hint { font-size: 11px; color: var(--text-sub); margin-top: 6px; line-height: 1.5; }
+        .hidden { display: none; }
+        details summary { cursor: pointer; font-size: 12px; font-weight: 600; color: var(--accent); }
+    </style>
+</head>
+<body>
+<div class="container">
+    <div class="card">
+        <div class="header">
+            <div>
+                <h1>Universal Video Hub</h1>
+                <p class="desc">支援 YouTube / Shorts、Bilibili、Instagram、Threads、X、TikTok</p>
+            </div>
+            <span id="connBadge" class="badge">靜態直連模式</span>
+        </div>
+
+        <div class="mode-tabs">
+            <button type="button" class="tab-btn active" id="tabBackend" onclick="switchMode('backend')">後端引擎 (高畫質/合併)</button>
+            <button type="button" class="tab-btn" id="tabDirect" onclick="switchMode('direct')">免伺服器直連通道</button>
+        </div>
+
+        <div class="input-group">
+            <label for="urlInput">影片或播放清單網址</label>
+            <input type="url" id="urlInput" placeholder="請貼上影片或 Threads / X 分享網址...">
+            <div class="btn-row">
+                <button type="button" class="btn-secondary" style="flex: 1;" onclick="pasteClipboard()">貼上剪貼簿</button>
+                <button type="button" class="btn-secondary" style="flex: 1;" onclick="clearInput()">清空</button>
+            </div>
+        </div>
+
+        <div class="input-group">
+            <label for="formatSelect">下載規格</label>
+            <select id="formatSelect">
+                <option value="best">MP4：最佳畫質 (含 FFmpeg 音訊合併)</option>
+                <option value="1080p">MP4：1080p 以下</option>
+                <option value="720p">MP4：720p 以下</option>
+                <option value="audio">MP3 純音訊擷取</option>
+            </select>
+        </div>
+
+        <div id="backendOptions">
+            <div class="input-group">
+                <label for="browserSelect">後端瀏覽器 Cookie（僅本機/私有伺服器適用）</label>
+                <select id="browserSelect">
+                    <option value="none" selected>不使用 (訪客模式 / 雲端環境變數 Cookie)</option>
+                    <option value="firefox">Firefox (推薦：免關閉瀏覽器)</option>
+                    <option value="chrome">Google Chrome</option>
+                    <option value="edge">Microsoft Edge</option>
+                    <option value="brave">Brave</option>
+                    <option value="opera">Opera</option>
+                </select>
+            </div>
+
+            <div class="input-group" id="remoteServerBox">
+                <details id="serverDetails">
+                    <summary>⚙️ 遠端 FastAPI 後端伺服器設定（GitHub Pages 連線必填）</summary>
+                    <div style="margin-top: 10px;">
+                        <input type="url" id="backendUrlInput" placeholder="例：https://your-app.onrender.com">
+                        <div class="btn-row">
+                            <button type="button" class="btn-secondary" style="flex: 1;" onclick="saveAndConnectBackend()">儲存並連線</button>
+                            <button type="button" class="btn-secondary" onclick="resetBackendUrl()">清除</button>
+                        </div>
+                        <p class="hint">
+                            💡 GitHub Pages 屬於純靜態 HTTPS 網頁；若要透過手機執行 yt-dlp + FFmpeg，請輸入已部署的 Render / Koyeb HTTPS 後端網址。若是在電腦執行 <code>python web_app.py</code>，手機同 Wi-Fi 請直接開啟終端機顯示的 <code>http://電腦區網IP:8000</code>。
+                        </p>
+                    </div>
+                </details>
+            </div>
+        </div>
+
+        <button type="button" class="btn-primary" id="startBtn" onclick="startDownload()">開始解析下載</button>
+
+        <div class="progress-bar" id="progBar"><div class="progress-fill" id="progFill"></div></div>
+        <div class="status-txt" id="statusTxt"></div>
+
+        <div class="download-box" id="downloadBox">
+            <a href="#" class="download-link" id="downloadLinkA" target="_blank" rel="noopener">儲存影音檔案</a>
+            <a href="#" class="download-link alt hidden" id="downloadLinkB" target="_blank" rel="noopener">備用下載通道</a>
+        </div>
+    </div>
+
+    <div class="card" id="logCard">
+        <label>即時執行日誌</label>
+        <div class="terminal" id="terminalLog">&gt;&gt; 系統初始化中...</div>
+    </div>
+</div>
+
+<script>
+    const STORAGE_KEY = "uvh_backend_url";
+    const isGithubPages = location.hostname.endsWith("github.io") || location.protocol === "file:";
+    let currentMode = isGithubPages && !localStorage.getItem(STORAGE_KEY) ? "direct" : "backend";
+    let ws = null;
+    let reconnectTimer = null;
+
+    const terminal = document.getElementById("terminalLog");
+    const statusTxt = document.getElementById("statusTxt");
+    const progBar = document.getElementById("progBar");
+    const progFill = document.getElementById("progFill");
+    const startBtn = document.getElementById("startBtn");
+    const downloadBox = document.getElementById("downloadBox");
+    const downloadLinkA = document.getElementById("downloadLinkA");
+    const downloadLinkB = document.getElementById("downloadLinkB");
+    const connBadge = document.getElementById("connBadge");
+    const backendUrlInput = document.getElementById("backendUrlInput");
+    const serverDetails = document.getElementById("serverDetails");
+
+    function log(txt) {
+        terminal.textContent += "\n" + txt;
+        terminal.scrollTop = terminal.scrollHeight;
+    }
+
+    function getBackendBaseUrl() {
+        const saved = (localStorage.getItem(STORAGE_KEY) || "").trim().replace(/\/+$/, "");
+        if (saved) return saved;
+        if (!isGithubPages && (location.protocol === "http:" || location.protocol === "https:")) {
+            return location.origin;
+        }
+        return "";
+    }
+
+    function switchMode(mode) {
+        currentMode = mode;
+        document.getElementById("tabBackend").classList.toggle("active", mode === "backend");
+        document.getElementById("tabDirect").classList.toggle("active", mode === "direct");
+        document.getElementById("backendOptions").classList.toggle("hidden", mode === "direct");
+        document.getElementById("logCard").classList.toggle("hidden", mode === "direct");
+        downloadBox.style.display = "none";
+        progBar.style.display = "none";
+        statusTxt.textContent = mode === "direct"
+            ? "目前為免伺服器直連模式：無需架設後端即可於手機產生下載通道。"
+            : "";
+
+        if (mode === "backend") {
+            connectWS();
+        }
+    }
+
+    function updateBadge(connected, label) {
+        connBadge.textContent = label;
+        connBadge.classList.toggle("connected", connected);
+    }
+
+    async function checkBackendHealth(baseUrl) {
+        try {
+            const resp = await fetch(`${baseUrl}/api/health`);
+            if (resp.ok) {
+                const info = await resp.json();
+                log(`[HEALTH] 後端連線正常 | yt-dlp ${info.yt_dlp_version} | FFmpeg: ${info.ffmpeg ? "就緒" : "未偵測"}`);
+            }
+        } catch (err) {
+            log(`[WARN] 健康檢查失敗：${err.message}`);
+        }
+    }
+
+    function connectWS() {
+        if (reconnectTimer) {
+            clearTimeout(reconnectTimer);
+            reconnectTimer = null;
+        }
+        if (ws) {
+            try { ws.close(); } catch (_) {}
+            ws = null;
+        }
+
+        const baseUrl = getBackendBaseUrl();
+        if (!baseUrl) {
+            updateBadge(false, "未設定後端");
+            if (isGithubPages) {
+                serverDetails.open = true;
+                log("[INFO] 偵測到 GitHub Pages 靜態環境：請於上方設定雲端 FastAPI 網址，或切換至「免伺服器直連通道」。");
+            }
+            return;
+        }
+
+        const parsed = new URL(baseUrl);
+        if (location.protocol === "https:" && parsed.protocol === "http:") {
+            updateBadge(false, "協定不相容 (HTTP)");
+            log("[WARN] HTTPS 頁面無法連線至純 HTTP 後端，請改用 HTTPS 雲端網址，或手機直接開啟本機 http://IP:8000。");
+            return;
+        }
+
+        const wsProto = parsed.protocol === "https:" ? "wss:" : "ws:";
+        const wsUri = `${wsProto}//${parsed.host}/ws`;
+        updateBadge(false, "連線中...");
+
+        ws = new WebSocket(wsUri);
+        ws.onopen = () => {
+            updateBadge(true, "後端已連線");
+            log(`[SYSTEM] 已連線至後端：${baseUrl}`);
+            checkBackendHealth(baseUrl);
+        };
+        ws.onmessage = (e) => {
+            const msg = JSON.parse(e.data);
+            if (msg.type === "log") log(msg.data);
+            if (msg.type === "status") statusTxt.textContent = msg.desc;
+            if (msg.type === "progress") {
+                progBar.style.display = "block";
+                progFill.style.width = msg.percent + "%";
+                if (msg.desc) statusTxt.textContent = msg.desc;
+            }
+            if (msg.type === "error") {
+                statusTxt.textContent = msg.data;
+                log(`[ERROR] ${msg.data}`);
+                startBtn.disabled = false;
+                startBtn.textContent = "開始解析下載";
+            }
+            if (msg.type === "finished") {
+                startBtn.disabled = false;
+                startBtn.textContent = "開始解析下載";
+                if (msg.success) {
+                    statusTxt.textContent = "下載完成！點擊下方綠色按鈕存檔：";
+                    downloadBox.style.display = "block";
+                    downloadLinkA.href = `${baseUrl}${msg.download_url}`;
+                    downloadLinkA.setAttribute("download", "");
+                    downloadLinkA.textContent = "儲存檔案：" + msg.title;
+                    downloadLinkB.classList.add("hidden");
+                    log("[SUCCESS] " + msg.title);
+                } else {
+                    statusTxt.textContent = "下載失敗，請查看下方執行日誌。";
+                    log("[ERROR] " + msg.data);
+                }
+            }
+        };
+        ws.onclose = () => {
+            updateBadge(false, "連線中斷");
+            if (currentMode === "backend" && getBackendBaseUrl()) {
+                reconnectTimer = setTimeout(connectWS, 3000);
+            }
+        };
+    }
+
+    function saveAndConnectBackend() {
+        const val = backendUrlInput.value.trim().replace(/\/+$/, "");
+        if (!val) return alert("請輸入有效的後端伺服器網址！");
+        localStorage.setItem(STORAGE_KEY, val);
+        switchMode("backend");
+    }
+
+    function resetBackendUrl() {
+        localStorage.removeItem(STORAGE_KEY);
+        backendUrlInput.value = "";
+        connectWS();
+    }
+
+    async function pasteClipboard() {
+        try {
+            const text = await navigator.clipboard.readText();
+            document.getElementById("urlInput").value = text.trim();
+        } catch (_) {
+            alert("請長按輸入框手動貼上網址（部分手機瀏覽器需授權剪貼簿）。");
+        }
+    }
+
+    function clearInput() {
+        document.getElementById("urlInput").value = "";
+        downloadBox.style.display = "none";
+        progBar.style.display = "none";
+        statusTxt.textContent = "";
+    }
+
+    function extractYouTubeId(url) {
+        const m = url.match(/(?:youtu\.be\/|youtube\.com\/(?:embed\/|v\/|watch\?v=|watch\?.+&v=|shorts\/))([\w-]{11})/);
+        return m ? m[1] : null;
+    }
+
+    function handleDirectFallback(url, format) {
+        const isAudio = format === "audio";
+        const ytId = extractYouTubeId(url);
+        downloadLinkA.removeAttribute("download");
+        downloadLinkB.classList.remove("hidden");
+
+        if (ytId) {
+            const cleanUrl = `https://www.youtube.com/watch?v=${ytId}`;
+            const loaderFmt = isAudio ? "mp3" : "1080";
+            downloadLinkA.href = `https://loader.to/api/button/?url=${encodeURIComponent(cleanUrl)}&f=${loaderFmt}`;
+            downloadLinkA.textContent = `YouTube 通道 1 (${isAudio ? "MP3" : "MP4"})`;
+            downloadLinkB.href = `https://www.y2mate.com/youtube/${ytId}`;
+            downloadLinkB.textContent = "YouTube 備用通道 2";
+            statusTxt.textContent = "已產生 YouTube / Shorts 直連下載通道：";
+        } else {
+            downloadLinkA.href = `https://cobalt.tools/#${encodeURIComponent(url)}`;
+            downloadLinkA.textContent = "開啟社群影音解析通道 (Cobalt)";
+            downloadLinkB.href = `https://snapsave.app/zh-tw?url=${encodeURIComponent(url)}`;
+            downloadLinkB.textContent = "備用社群下載通道 (SnapSave)";
+            statusTxt.textContent = "已產生社群平台直連下載通道：";
+        }
+        downloadBox.style.display = "block";
+    }
+
+    function startDownload() {
+        const url = document.getElementById("urlInput").value.trim();
+        const format = document.getElementById("formatSelect").value;
+        if (!url) return alert("請先輸入影片網址！");
+
+        downloadBox.style.display = "none";
+
+        if (currentMode === "direct") {
+            handleDirectFallback(url, format);
+            return;
+        }
+
+        if (!ws || ws.readyState !== WebSocket.OPEN) {
+            alert("尚未連線至 FastAPI 後端！請先設定雲端後端網址，或切換至「免伺服器直連通道」。");
+            return;
+        }
+
+        progBar.style.display = "block";
+        progFill.style.width = "0%";
+        startBtn.disabled = true;
+        startBtn.textContent = "解析下載中...";
+        statusTxt.textContent = "正在傳送任務至後端引擎...";
+
+        ws.send(JSON.stringify({
+            url: url,
+            format: format,
+            browser: document.getElementById("browserSelect").value
+        }));
+    }
+
+    (function init() {
+        const saved = localStorage.getItem(STORAGE_KEY) || "";
+        backendUrlInput.value = saved;
+        if (!isGithubPages) {
+            document.getElementById("remoteServerBox").classList.add("hidden");
+        }
+        switchMode(currentMode);
+    })();
+</script>
+</body>
+</html>

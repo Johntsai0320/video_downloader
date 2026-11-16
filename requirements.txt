@@ -1,0 +1,12 @@
+# Core downloader & FFmpeg fallback
+yt-dlp>=2026.10.21
+imageio-ffmpeg>=0.6.0
+pycryptodomex>=3.23.0
+
+# Desktop GUI (PyQt6)
+PyQt6>=6.10.0
+
+# Web / Mobile Server (FastAPI + WebSocket)
+fastapi>=0.115.0
+uvicorn>=0.35.0
+websockets>=14.0

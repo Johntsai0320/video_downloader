@@ -1,0 +1,5 @@
+fastapi>=0.115.0
+uvicorn>=0.35.0
+websockets>=14.0
+yt-dlp>=2026.10.21
+pycryptodomex>=3.23.0

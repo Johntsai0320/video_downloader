@@ -1,0 +1,7 @@
+services:
+  - type: web
+    name: universal-video-hub
+    env: docker
+    plan: free
+    dockerContext: ..
+    dockerfilePath: deploy/Dockerfile
