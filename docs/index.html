@@ -220,6 +220,7 @@
                     <summary>⚙️ 遠端 FastAPI 後端伺服器設定（GitHub Pages 連線必填）</summary>
                     <div style="margin-top: 10px;">
                         <input type="url" id="backendUrlInput" placeholder="例：https://your-app.onrender.com">
+                        <input type="password" id="backendTokenInput" placeholder="選填：API 存取權杖 (API_ACCESS_TOKEN)" style="margin-top: 8px;">
                         <div class="btn-row">
                             <button type="button" class="btn-secondary" style="flex: 1;" onclick="saveAndConnectBackend()">儲存並連線</button>
                             <button type="button" class="btn-secondary" onclick="resetBackendUrl()">清除</button>
@@ -232,7 +233,10 @@
             </div>
         </div>
 
-        <button type="button" class="btn-primary" id="startBtn" onclick="startDownload()">開始解析下載</button>
+        <div class="btn-row" style="margin-top: 0;">
+            <button type="button" class="btn-primary" id="startBtn" style="flex: 3;" onclick="startDownload()">開始解析下載</button>
+            <button type="button" class="btn-secondary hidden" id="cancelBtn" style="flex: 1; background: #ef4444; color: #fff;" onclick="cancelDownload()">中止</button>
+        </div>
 
         <div class="progress-bar" id="progBar"><div class="progress-fill" id="progFill"></div></div>
         <div class="status-txt" id="statusTxt"></div>
@@ -251,6 +255,7 @@
 
 <script>
     const STORAGE_KEY = "uvh_backend_url";
+    const TOKEN_STORAGE_KEY = "uvh_backend_token";
     const isGithubPages = location.hostname.endsWith("github.io") || location.protocol === "file:";
     let currentMode = isGithubPages && !localStorage.getItem(STORAGE_KEY) ? "direct" : "backend";
     let ws = null;
@@ -261,16 +266,29 @@
     const progBar = document.getElementById("progBar");
     const progFill = document.getElementById("progFill");
     const startBtn = document.getElementById("startBtn");
+    const cancelBtn = document.getElementById("cancelBtn");
     const downloadBox = document.getElementById("downloadBox");
     const downloadLinkA = document.getElementById("downloadLinkA");
     const downloadLinkB = document.getElementById("downloadLinkB");
     const connBadge = document.getElementById("connBadge");
     const backendUrlInput = document.getElementById("backendUrlInput");
+    const backendTokenInput = document.getElementById("backendTokenInput");
     const serverDetails = document.getElementById("serverDetails");
 
     function log(txt) {
         terminal.textContent += "\n" + txt;
         terminal.scrollTop = terminal.scrollHeight;
+    }
+
+    function setDownloadingState(active) {
+        startBtn.disabled = active;
+        startBtn.textContent = active ? "解析下載中..." : "開始解析下載";
+        if (currentMode === "backend") {
+            cancelBtn.classList.toggle("hidden", !active);
+            cancelBtn.disabled = !active;
+        } else {
+            cancelBtn.classList.add("hidden");
+        }
     }
 
     function getBackendBaseUrl() {
@@ -282,6 +300,10 @@
         return "";
     }
 
+    function getBackendToken() {
+        return (localStorage.getItem(TOKEN_STORAGE_KEY) || "").trim();
+    }
+
     function switchMode(mode) {
         currentMode = mode;
         document.getElementById("tabBackend").classList.toggle("active", mode === "backend");
@@ -290,6 +312,7 @@
         document.getElementById("logCard").classList.toggle("hidden", mode === "direct");
         downloadBox.style.display = "none";
         progBar.style.display = "none";
+        setDownloadingState(false);
         statusTxt.textContent = mode === "direct"
             ? "目前為免伺服器直連模式：無需架設後端即可於手機產生下載通道。"
             : "";
@@ -336,7 +359,15 @@
             return;
         }
 
-        const parsed = new URL(baseUrl);
+        let parsed;
+        try {
+            parsed = new URL(baseUrl);
+        } catch (_) {
+            updateBadge(false, "後端網址無效");
+            log("[ERROR] 儲存的後端網址格式無效，請重新設定含 https:// 或 http:// 的完整網址。");
+            return;
+        }
+
         if (location.protocol === "https:" && parsed.protocol === "http:") {
             updateBadge(false, "協定不相容 (HTTP)");
             log("[WARN] HTTPS 頁面無法連線至純 HTTP 後端，請改用 HTTPS 雲端網址，或手機直接開啟本機 http://IP:8000。");
@@ -344,7 +375,9 @@
         }
 
         const wsProto = parsed.protocol === "https:" ? "wss:" : "ws:";
-        const wsUri = `${wsProto}//${parsed.host}/ws`;
+        const token = getBackendToken();
+        const tokenQuery = token ? `?token=${encodeURIComponent(token)}` : "";
+        const wsUri = `${wsProto}//${parsed.host}/ws${tokenQuery}`;
         updateBadge(false, "連線中...");
 
         ws = new WebSocket(wsUri);
@@ -365,27 +398,33 @@
             if (msg.type === "error") {
                 statusTxt.textContent = msg.data;
                 log(`[ERROR] ${msg.data}`);
-                startBtn.disabled = false;
-                startBtn.textContent = "開始解析下載";
+                setDownloadingState(false);
             }
             if (msg.type === "finished") {
-                startBtn.disabled = false;
-                startBtn.textContent = "開始解析下載";
+                setDownloadingState(false);
                 if (msg.success) {
                     statusTxt.textContent = "下載完成！點擊下方綠色按鈕存檔：";
                     downloadBox.style.display = "block";
-                    downloadLinkA.href = `${baseUrl}${msg.download_url}`;
+                    const tok = getBackendToken();
+                    const tokParam = tok ? `?token=${encodeURIComponent(tok)}` : "";
+                    downloadLinkA.href = `${baseUrl}${msg.download_url}${tokParam}`;
                     downloadLinkA.setAttribute("download", "");
                     downloadLinkA.textContent = "儲存檔案：" + msg.title;
                     downloadLinkB.classList.add("hidden");
                     log("[SUCCESS] " + msg.title);
                 } else {
-                    statusTxt.textContent = "下載失敗，請查看下方執行日誌。";
+                    statusTxt.textContent = msg.data || "下載失敗，請查看下方執行日誌。";
                     log("[ERROR] " + msg.data);
                 }
             }
         };
-        ws.onclose = () => {
+        ws.onclose = (ev) => {
+            setDownloadingState(false);
+            if (ev && ev.code === 4401) {
+                updateBadge(false, "權杖驗證失敗");
+                log("[ERROR] API_ACCESS_TOKEN 驗證失敗，請檢查設定後重新連線。");
+                return;
+            }
             updateBadge(false, "連線中斷");
             if (currentMode === "backend" && getBackendBaseUrl()) {
                 reconnectTimer = setTimeout(connectWS, 3000);
@@ -396,13 +435,29 @@
     function saveAndConnectBackend() {
         const val = backendUrlInput.value.trim().replace(/\/+$/, "");
         if (!val) return alert("請輸入有效的後端伺服器網址！");
+        try {
+            const parsed = new URL(val);
+            if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+                return alert("後端網址必須以 https:// 或 http:// 開頭！");
+            }
+        } catch (_) {
+            return alert("後端網址格式錯誤，範例：https://your-app.onrender.com");
+        }
         localStorage.setItem(STORAGE_KEY, val);
+        const tokenVal = backendTokenInput.value.trim();
+        if (tokenVal) {
+            localStorage.setItem(TOKEN_STORAGE_KEY, tokenVal);
+        } else {
+            localStorage.removeItem(TOKEN_STORAGE_KEY);
+        }
         switchMode("backend");
     }
 
     function resetBackendUrl() {
         localStorage.removeItem(STORAGE_KEY);
+        localStorage.removeItem(TOKEN_STORAGE_KEY);
         backendUrlInput.value = "";
+        backendTokenInput.value = "";
         connectWS();
     }
 
@@ -423,7 +478,7 @@
     }
 
     function extractYouTubeId(url) {
-        const m = url.match(/(?:youtu\.be\/|youtube\.com\/(?:embed\/|v\/|watch\?v=|watch\?.+&v=|shorts\/))([\w-]{11})/);
+        const m = url.match(/(?:youtu\.be\/|youtube\.com\/(?:embed\/|v\/|watch\?v=|watch\?.+&v=|shorts\/|live\/))([\w-]{11})/);
         return m ? m[1] : null;
     }
 
@@ -470,8 +525,7 @@
 
         progBar.style.display = "block";
         progFill.style.width = "0%";
-        startBtn.disabled = true;
-        startBtn.textContent = "解析下載中...";
+        setDownloadingState(true);
         statusTxt.textContent = "正在傳送任務至後端引擎...";
 
         ws.send(JSON.stringify({
@@ -481,9 +535,17 @@
         }));
     }
 
+    function cancelDownload() {
+        if (ws && ws.readyState === WebSocket.OPEN) {
+            cancelBtn.disabled = true;
+            statusTxt.textContent = "正在通知後端安全中止任務...";
+            ws.send(JSON.stringify({ action: "cancel" }));
+        }
+    }
+
     (function init() {
-        const saved = localStorage.getItem(STORAGE_KEY) || "";
-        backendUrlInput.value = saved;
+        backendUrlInput.value = localStorage.getItem(STORAGE_KEY) || "";
+        backendTokenInput.value = localStorage.getItem(TOKEN_STORAGE_KEY) || "";
         if (!isGithubPages) {
             document.getElementById("remoteServerBox").classList.add("hidden");
         }

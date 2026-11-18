@@ -1,0 +1,18 @@
+[project]
+name = "universal-video-hub"
+version = "1.1.0"
+description = "Desktop (PyQt6), FastAPI WebSocket server, and GitHub Pages UI multi-platform video downloader."
+readme = "README.md"
+requires-python = ">=3.10"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+
+[tool.ruff]
+target-version = "py310"
+line-length = 110
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
+ignore = ["E501"]

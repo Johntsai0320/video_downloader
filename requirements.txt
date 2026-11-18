@@ -1,5 +1,5 @@
 # Core downloader & FFmpeg fallback
-yt-dlp>=2026.10.21
+yt-dlp[default,curl-cffi,deno]>=2026.10.21
 imageio-ffmpeg>=0.6.0
 pycryptodomex>=3.23.0
 

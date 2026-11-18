@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import os
 import sys
 import tempfile
@@ -75,7 +76,7 @@ def create_sanitized_meta_cookies(original_cookie_path: str) -> tuple[str | None
         return None, None
 
     try:
-        with open(original_cookie_path, "r", encoding="utf-8", errors="ignore") as f:
+        with open(original_cookie_path, encoding="utf-8", errors="ignore") as f:
             lines = f.readlines()
 
         clean_lines: list[str] = []
@@ -94,16 +95,17 @@ def create_sanitized_meta_cookies(original_cookie_path: str) -> tuple[str | None
                     has_cookie_entry = True
 
         if has_cookie_entry:
-            temp_file = tempfile.NamedTemporaryFile(
+            with tempfile.NamedTemporaryFile(
                 mode="w",
                 delete=False,
                 suffix="_meta_cookies.txt",
                 encoding="utf-8",
-            )
-            temp_file.writelines(clean_lines)
-            temp_file.close()
-            return temp_file.name, temp_file.name
-    except Exception:
+            ) as temp_file:
+                with contextlib.suppress(OSError):
+                    os.chmod(temp_file.name, 0o600)
+                temp_file.writelines(clean_lines)
+                return temp_file.name, temp_file.name
+    except OSError:
         pass
 
     return original_cookie_path, None

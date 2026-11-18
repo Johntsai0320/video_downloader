@@ -12,8 +12,10 @@ from .downloader import (
     DownloadCancelledError,
     DownloadResult,
     UniversalDownloaderEngine,
+    detect_js_runtimes,
     media_id_to_shortcode,
     normalize_url,
+    validate_http_url,
 )
 from .ffmpeg_helper import find_ffmpeg, find_ffprobe, get_ffmpeg_location
 
@@ -26,10 +28,12 @@ __all__ = [
     "UniversalDownloaderEngine",
     "browser_profile_exists",
     "create_sanitized_meta_cookies",
+    "detect_js_runtimes",
     "extract_browser_cookies_to_file",
     "find_ffmpeg",
     "find_ffprobe",
     "get_ffmpeg_location",
     "media_id_to_shortcode",
     "normalize_url",
+    "validate_http_url",
 ]

@@ -23,6 +23,8 @@
 video_downloader/
 ├── main.py                      # PyQt6 桌面版主程式入口
 ├── web_app.py                   # FastAPI 手機 / 網頁版啟動入口
+├── pyproject.toml               # Ruff 與 Pytest 工程設定
+├── .env.example                 # 雲端 / 本機環境變數範本
 ├── src/
 │   ├── core/                    # 桌面與網頁共用核心引擎
 │   │   ├── downloader.py        # UniversalDownloaderEngine、URL 正規化、Meta 救援
@@ -33,10 +35,10 @@ video_downloader/
 ├── docs/                        # GitHub Pages 靜態手機前端 (index.html)
 ├── deploy/                      # Dockerfile、render.yaml、精簡版 requirements.txt
 ├── packaging/                   # PyInstaller 封裝設定檔 (UniversalVideoHub.spec)
-├── tests/                       # 單元測試與 Web API 測試
-├── archive/                     # 歷史開發版本 (v1 ~ v24)
-└── 製作影片下載器程式指南/       # 原始設計紀錄 (chat.md)
+└── tests/                       # 核心單元、WebSocket 與各大社群平台測試套件
 ```
+
+> 歷史開發版本（`v1`–`v24`）與原始設計紀錄已完整封存於 Git Tag `v0.1.0-legacy`（可透過 `git checkout v0.1.0-legacy` 檢視）。
 
 ---
 
@@ -48,7 +50,8 @@ video_downloader/
 pip install -r requirements.txt
 ```
 
-> 若要合併 1080p 以上高畫質串流或轉檔 MP3，建議安裝系統 `ffmpeg`（例如 Windows 放於 `C:\ffmpeg\bin\ffmpeg.exe`），程式亦會自動偵測 `imageio-ffmpeg` 作為備援。
+> - 套件已預設包含 `yt-dlp[default,curl-cffi,deno]`（支援 YouTube EJS 解算與 TikTok TLS 模擬）。
+> - 若要合併 1080p 以上高畫質串流或轉檔 MP3，建議安裝系統 `ffmpeg`（例如 Windows 放於 `C:\ffmpeg\bin\ffmpeg.exe`），程式亦會自動偵測 `imageio-ffmpeg` 作為備援。
 
 ### 2. 啟動桌面版（PyQt6 GUI）
 
@@ -81,7 +84,11 @@ python web_app.py
 
 1. 在 Render 建立 **New Web Service** 並連結此 GitHub 儲存庫。
 2. 指向 `deploy/render.yaml`（或手動指定 Dockerfile 路徑 `deploy/Dockerfile`、Docker Context `.`）。
-3. 如需下載登入限定內容，可在環境變數新增 `COOKIES_DATA`（貼入 `cookies.txt` 內容）。
+3. 建議設定以下環境變數（完整說明請見 `.env.example`）：
+   - `COOKIES_DATA`：如需下載登入限定或 Bilibili/Meta 內容，貼入 `cookies.txt` 內容。
+   - `API_ACCESS_TOKEN`：選填，設定後僅持有相同權杖的前端可連線 `/ws` 與 `/download`。
+   - `ALLOWED_ORIGINS`：選填，例如 `https://johntsai0320.github.io`。
+   - `FILE_TTL_SECONDS` / `MAX_CONCURRENT_DOWNLOADS`：控制暫存檔保留時間（預設 600 秒）與同時下載上限（雲端預設 2）。
 4. 部署完成後取得 `https://<your-service>.onrender.com`，填入 GitHub Pages 的遠端後端設定即可連線使用。
 
 ---
@@ -96,8 +103,12 @@ pyinstaller --noconfirm packaging/UniversalVideoHub.spec
 
 ---
 
-## 執行測試
+## 執行測試與檢查
 
 ```powershell
-python -m unittest discover -s tests -v
+pytest -v tests
+ruff check main.py web_app.py src tests
+
+# 選填：對公開社群平台連結執行即時連網解析測試
+RUN_LIVE_TESTS=1 pytest -v tests/test_platforms.py -k live
 ```
