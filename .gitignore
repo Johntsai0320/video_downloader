@@ -3,6 +3,9 @@ allcookie.txt
 cookies.txt
 *_cookies.txt
 *_meta_cookies.txt
+.env
+.env.*
+!.env.example
 
 # Build & packaging artifacts
 build/
@@ -19,6 +22,7 @@ __pycache__/
 *.py[cod]
 *$py.class
 .pytest_cache/
+.ruff_cache/
 .venv/
 venv/
 env/
