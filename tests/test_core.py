@@ -105,6 +105,12 @@ class CoreTests(unittest.TestCase):
             self.assertTrue(best_opts["noprogress"])
             self.assertTrue(best_opts["noplaylist"])
             self.assertFalse(best_opts["nocheckcertificate"])
+            self.assertEqual(best_opts["concurrent_fragment_downloads"], 8)
+            self.assertEqual(best_opts["http_chunk_size"], 10 * 1024 * 1024)
+            self.assertEqual(
+                best_opts["format_sort"], ["proto:https", "res", "vcodec:h264", "ext:mp4:m4a"]
+            )
+            self.assertFalse(best_opts["no_warnings"])
 
             insecure_opts = engine.build_ydl_opts(
                 "https://www.youtube.com/watch?v=abc",
@@ -131,6 +137,46 @@ class CoreTests(unittest.TestCase):
 
             audio_opts = engine.build_ydl_opts("https://www.youtube.com/watch?v=1", out, "audio")
             self.assertEqual(audio_opts["postprocessors"][0]["preferredcodec"], "mp3")
+            self.assertNotIn("format_sort", audio_opts)
+
+    def test_progress_hook_fragments_and_logger(self) -> None:
+        progress_vals: list[int] = []
+        statuses: list[str] = []
+        logs: list[str] = []
+        engine = UniversalDownloaderEngine(
+            on_progress=progress_vals.append,
+            on_status=statuses.append,
+            on_log=logs.append,
+        )
+        engine._progress_hook(
+            {
+                "status": "downloading",
+                "total_bytes": 0,
+                "downloaded_bytes": 1024,
+                "fragment_index": 25,
+                "fragment_count": 100,
+                "_speed_str": "2.50MiB/s",
+                "_eta_str": "00:20",
+                "info_dict": {
+                    "format_id": "616",
+                    "ext": "mp4",
+                    "protocol": "m3u8_native",
+                    "height": 1080,
+                },
+            }
+        )
+        self.assertEqual(progress_vals, [25])
+        self.assertIn("片段 25/100", statuses[0])
+        self.assertTrue(any("格式 616" in line for line in logs))
+
+        opts = engine.build_ydl_opts("https://www.youtube.com/watch?v=1", "/tmp/x.mp4", "best")
+        logger = opts["logger"]
+        logger.warning("JS challenge warning")
+        logger.warning("JS challenge warning")
+        logger.error("Network failure")
+        warn_count = sum(1 for line in logs if "JS challenge warning" in line)
+        self.assertEqual(warn_count, 1)
+        self.assertTrue(any("[yt-dlp ERR] Network failure" in line for line in logs))
 
     def test_detect_js_runtimes_and_ffmpeg(self) -> None:
         runtimes = detect_js_runtimes()

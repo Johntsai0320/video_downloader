@@ -73,6 +73,7 @@ _X_PROXY_DOMAINS = (
 _THREADS_HOSTS = ("threads.net", "www.threads.net", "threads.com", "www.threads.com")
 _META_DOMAINS = ("instagram.com", "threads.net", "threads.com", "facebook.com", "fb.watch")
 _BILIBILI_DOMAINS = ("bilibili.com", "b23.tv")
+_YOUTUBE_DOMAINS = ("youtube.com", "youtu.be")
 
 _DESKTOP_UA = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
@@ -281,6 +282,31 @@ def fetch_meta_direct_video_url(
     return None
 
 
+class _YdlLogger:
+    """Forwards yt-dlp warnings and errors into the engine log stream."""
+
+    def __init__(self, emit_cb: Callable[[str], None]):
+        self._emit = emit_cb
+        self._seen_warnings: set[str] = set()
+
+    def debug(self, msg: str) -> None:
+        pass
+
+    def info(self, msg: str) -> None:
+        pass
+
+    def warning(self, msg: str) -> None:
+        clean = str(msg).strip()
+        if clean and clean not in self._seen_warnings:
+            self._seen_warnings.add(clean)
+            self._emit(f"[yt-dlp WARN] {clean}")
+
+    def error(self, msg: str) -> None:
+        clean = str(msg).strip()
+        if clean:
+            self._emit(f"[yt-dlp ERR] {clean}")
+
+
 class UniversalDownloaderEngine:
     """Core yt-dlp download orchestrator with Meta/Bilibili/FFmpeg fallbacks."""
 
@@ -295,8 +321,9 @@ class UniversalDownloaderEngine:
         self.on_status = on_status
         self.on_log = on_log
         self.is_cancelled = is_cancelled
-        self._last_progress_emit = 0.0
-        self._last_progress_pct = -1
+        self._last_status_emit = 0.0
+        self._last_percent = -1
+        self._logged_format_ids: set[str] = set()
 
     def _emit_log(self, msg: str) -> None:
         if self.on_log:
@@ -317,38 +344,55 @@ class UniversalDownloaderEngine:
         status = d.get("status")
         if status == "downloading":
             now = time.monotonic()
+            info_dict = d.get("info_dict") or {}
+            fmt_id = str(info_dict.get("format_id") or "")
+            if fmt_id and fmt_id not in self._logged_format_ids:
+                self._logged_format_ids.add(fmt_id)
+                proto = info_dict.get("protocol") or "unknown"
+                ext = info_dict.get("ext") or "?"
+                height = info_dict.get("height")
+                res_txt = f"{height}p" if height else "audio"
+                self._emit_log(f"【串流鎖定】格式 {fmt_id} ({ext} / {proto} / {res_txt})")
+
             total = d.get("total_bytes") or d.get("total_bytes_estimate") or 0
             downloaded = d.get("downloaded_bytes") or 0
             frag_idx = d.get("fragment_index") or 0
             frag_cnt = d.get("fragment_count") or 0
-            info_dict = d.get("info_dict") or {}
+
             p_index = info_dict.get("playlist_index")
             p_count = info_dict.get("n_entries")
             prefix = f"[{p_index}/{p_count}] " if (p_index and p_count) else ""
 
-            if total > 0:
+            if frag_idx and frag_cnt and (total <= 0 or info_dict.get("protocol") == "m3u8_native"):
+                percent = min(99, int((frag_idx / frag_cnt) * 100))
+                frag_note = f" (片段 {frag_idx}/{frag_cnt})"
+            elif total > 0:
                 percent = min(100, int((downloaded / total) * 100))
+                frag_note = f" (片段 {frag_idx}/{frag_cnt})" if frag_cnt > 0 else ""
             elif frag_cnt > 0:
                 percent = min(99, int((frag_idx / frag_cnt) * 100))
+                frag_note = f" (片段 {frag_idx}/{frag_cnt})"
             else:
-                percent = 0
+                percent = max(0, self._last_percent)
+                frag_note = ""
 
             # Throttle GUI signal updates to avoid flooding the Qt main thread
-            if now - self._last_progress_emit < 0.15 and percent == self._last_progress_pct:
+            if now - self._last_status_emit < 0.15 and percent == self._last_percent:
                 return
-            if now - self._last_progress_emit < 0.05:
+            if now - self._last_status_emit < 0.05 and percent < 100:
                 return
 
-            self._last_progress_emit = now
-            self._last_progress_pct = percent
+            self._last_percent = percent
+            self._last_status_emit = now
             self._emit_progress(percent)
-            speed = d.get("_speed_str") or "N/A"
-            eta = d.get("_eta_str") or "N/A"
-            frag_note = f" | 片段: {frag_idx}/{frag_cnt}" if frag_cnt > 0 else ""
-            self._emit_status(f"{prefix}下載進度: {percent}% | 速度: {speed} | 剩餘時間: {eta}{frag_note}")
+            speed = (d.get("_speed_str") or "N/A").strip()
+            eta = (d.get("_eta_str") or "N/A").strip()
+            self._emit_status(
+                f"{prefix}下載進度: {percent}%{frag_note} | 速度: {speed} | 剩餘時間: {eta}"
+            )
         elif status == "finished":
-            self._last_progress_emit = 0.0
-            self._last_progress_pct = -1
+            self._last_status_emit = 0.0
+            self._last_percent = -1
             self._emit_progress(100)
             self._emit_status("音訊與視訊下載完成，FFmpeg 封裝處理中...")
 
@@ -393,15 +437,19 @@ class UniversalDownloaderEngine:
         opts: dict = {
             "outtmpl": out_template,
             "progress_hooks": [self._progress_hook],
+            "logger": _YdlLogger(self._emit_log),
             "quiet": True,
-            "no_warnings": True,
+            "no_warnings": False,
             "noprogress": True,
             "nocheckcertificate": allow_insecure_ssl,
             "noplaylist": not is_playlist,
             "socket_timeout": 15,
-            "retries": 3,
-            "fragment_retries": 3,
-            "concurrent_fragment_downloads": 4,
+            "retries": 10,
+            "fragment_retries": 10,
+            "file_access_retries": 3,
+            "extractor_retries": 3,
+            "concurrent_fragment_downloads": 8,
+            "http_chunk_size": 10 * 1024 * 1024,
             "http_headers": headers,
         }
 
@@ -441,6 +489,8 @@ class UniversalDownloaderEngine:
             ]
         else:
             opts["merge_output_format"] = "mp4"
+            if not is_direct_cdn:
+                opts["format_sort"] = ["proto:https", "res", "vcodec:h264", "ext:mp4:m4a"]
 
         return opts
 
@@ -538,6 +588,21 @@ class UniversalDownloaderEngine:
             active_cookie_file, temp_cookie_file = create_sanitized_meta_cookies(cookie_file_clean)
             if temp_cookie_file:
                 self._emit_log("【自動優化】已純化 Meta 專屬 Session 憑證...")
+
+        self._last_status_emit = 0.0
+        self._last_percent = -1
+        self._logged_format_ids.clear()
+
+        is_youtube = any(domain in target_host for domain in _YOUTUBE_DOMAINS)
+        if is_youtube and not detect_js_runtimes():
+            self._emit_log(
+                "【效能警告】未偵測到 Deno / Node.js，YouTube 可能被限速至 10 KiB/s；"
+                "請執行 pip install \"yt-dlp[default,curl-cffi,deno]\" 或點擊「升級核心」。"
+            )
+        if is_youtube and has_cookie_source:
+            self._emit_log(
+                "【YouTube 提示】已掛載 Cookie；若下載公開影片遇到限速或停滯，建議點擊 Cookie 旁的「清除」改用訪客模式。"
+            )
 
         if ffmpeg_location:
             self._emit_log(f"【FFmpeg 偵測】已啟用多媒體合併引擎：{ffmpeg_location}")

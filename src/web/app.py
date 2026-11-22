@@ -33,15 +33,20 @@ DOCS_INDEX = PROJECT_ROOT / "docs" / "index.html"
 _IS_CLOUD = bool(
     os.environ.get("RENDER") or os.environ.get("KOYEB_APP_NAME") or os.environ.get("CLOUD_ENV")
 )
+_DEFAULT_TEMP_DIR = Path(tempfile.gettempdir()) / "WebVideoDownloads"
 DOWNLOAD_DIR = Path(
     os.environ.get(
         "DOWNLOAD_DIR",
-        os.path.join(tempfile.gettempdir(), "WebVideoDownloads")
+        str(_DEFAULT_TEMP_DIR)
         if _IS_CLOUD
         else os.path.join(os.path.expanduser("~"), "Downloads", "WebVideoDownloads"),
     )
 )
-DOWNLOAD_DIR.mkdir(parents=True, exist_ok=True)
+try:
+    DOWNLOAD_DIR.mkdir(parents=True, exist_ok=True)
+except OSError:
+    DOWNLOAD_DIR = _DEFAULT_TEMP_DIR
+    DOWNLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
 AUTO_CLEANUP = os.environ.get("AUTO_CLEANUP", "1" if _IS_CLOUD else "0").lower() in (
     "1",

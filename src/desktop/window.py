@@ -6,6 +6,7 @@ import os
 import subprocess
 import sys
 
+import yt_dlp
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
     QApplication,
@@ -30,7 +31,7 @@ from src.core.cookies import (
     BrowserCookieLockedError,
     extract_browser_cookies_to_file,
 )
-from src.core.downloader import QUALITY_PRESETS
+from src.core.downloader import QUALITY_PRESETS, detect_js_runtimes
 from src.core.ffmpeg_helper import find_ffmpeg
 from src.desktop.workers import CoreUpdateWorker, DownloadWorker
 
@@ -246,6 +247,16 @@ class VideoDownloaderGUI(QMainWindow):
         else:
             self.log_view.append("[WARN] 未偵測到 FFmpeg，高畫質影像與音訊可能無法自動合併。")
 
+        yt_ver = getattr(yt_dlp.version, "__version__", "unknown")
+        runtimes = detect_js_runtimes()
+        if runtimes:
+            rt_desc = ", ".join(f"{name} ({info['path']})" for name, info in runtimes.items())
+            self.log_view.append(f"[SYSTEM] yt-dlp {yt_ver} | JS Runtime 已就緒：{rt_desc}")
+        else:
+            self.log_view.append(
+                f"[WARN] yt-dlp {yt_ver} | 未偵測到 Deno / Node.js，YouTube 下載速度可能受限，建議點擊「升級核心」。"
+            )
+
     def _selected_browser(self) -> str:
         choice = self.combo_browser.currentText()
         if choice.startswith("不使用"):
@@ -385,8 +396,11 @@ class VideoDownloaderGUI(QMainWindow):
             if not self.download_worker.wait(1500):
                 self.download_worker.terminate()
                 self.download_worker.wait(1000)
-        if self.update_worker and self.update_worker.isRunning():
-            if not self.update_worker.wait(1000):
-                self.update_worker.terminate()
-                self.update_worker.wait(500)
+        if (
+            self.update_worker
+            and self.update_worker.isRunning()
+            and not self.update_worker.wait(1000)
+        ):
+            self.update_worker.terminate()
+            self.update_worker.wait(500)
         super().closeEvent(event)

@@ -21,10 +21,23 @@ hiddenimports = [
     "src.desktop.workers",
 ]
 
-tmp_ret = collect_all("yt_dlp")
-datas += tmp_ret[0]
-binaries += tmp_ret[1]
-hiddenimports += tmp_ret[2]
+for pkg_name in ("yt_dlp", "yt_dlp_ejs", "curl_cffi"):
+    try:
+        tmp_ret = collect_all(pkg_name)
+        datas += tmp_ret[0]
+        binaries += tmp_ret[1]
+        hiddenimports += tmp_ret[2]
+    except Exception:
+        pass
+
+try:
+    import deno as _deno_pkg
+
+    deno_exe = _deno_pkg.find_deno_bin()
+    if deno_exe and os.path.isfile(deno_exe):
+        binaries.append((deno_exe, "."))
+except Exception:
+    pass
 
 a = Analysis(
     [os.path.join(ROOT_DIR, "main.py")],
