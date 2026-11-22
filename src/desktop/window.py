@@ -344,7 +344,9 @@ class VideoDownloaderGUI(QMainWindow):
     def cancel_download(self) -> None:
         if self.download_worker and self.download_worker.isRunning():
             self.download_worker.is_cancelled = True
-            self.lbl_status.setText("狀態：正在安全中止任務...")
+            self.btn_cancel.setEnabled(False)
+            self.lbl_status.setText("狀態：正在安全中止任務（等待網路請求回應）...")
+            self.log_view.append(">> 已送出中止指令，正在結束下載...")
 
     def on_download_complete(self, success: bool, message: str) -> None:
         self.btn_start.setEnabled(True)
@@ -380,7 +382,11 @@ class VideoDownloaderGUI(QMainWindow):
     def closeEvent(self, event) -> None:
         if self.download_worker and self.download_worker.isRunning():
             self.download_worker.is_cancelled = True
-            self.download_worker.wait(1500)
+            if not self.download_worker.wait(1500):
+                self.download_worker.terminate()
+                self.download_worker.wait(1000)
         if self.update_worker and self.update_worker.isRunning():
-            self.update_worker.wait(1000)
+            if not self.update_worker.wait(1000):
+                self.update_worker.terminate()
+                self.update_worker.wait(500)
         super().closeEvent(event)
