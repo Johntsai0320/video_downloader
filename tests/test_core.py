@@ -100,7 +100,9 @@ class CoreTests(unittest.TestCase):
 
             best_opts = engine.build_ydl_opts("https://www.youtube.com/shorts/abc", out, "best")
             self.assertEqual(best_opts["merge_output_format"], "mp4")
-            self.assertTrue(best_opts["format"].startswith("bv*[ext=mp4]+ba[ext=m4a]"))
+            self.assertIn("bv*[ext=mp4]", best_opts["format"])
+            self.assertIn("protocol~='^https?$'", best_opts["format"])
+            self.assertTrue(best_opts["noprogress"])
             self.assertTrue(best_opts["noplaylist"])
             self.assertFalse(best_opts["nocheckcertificate"])
             self.assertEqual(best_opts["concurrent_fragment_downloads"], 8)

@@ -477,12 +477,36 @@
         statusTxt.textContent = "";
     }
 
-    function extractYouTubeId(url) {
-        const m = url.match(/(?:youtu\.be\/|youtube\.com\/(?:embed\/|v\/|watch\?v=|watch\?.+&v=|shorts\/|live\/))([\w-]{11})/);
-        return m ? m[1] : null;
+    function extractFirstUrl(raw) {
+        const m = (raw || "").trim().match(/https?:\/\/[^\s"'<>]+/i);
+        return m ? m[0] : (raw || "").trim();
     }
 
-    function handleDirectFallback(url, format) {
+    function isYouTubeUrl(url) {
+        return /(?:^|\/\/|\.)(?:youtube\.com|youtu\.be|youtube-nocookie\.com)(?:\/|$|\?)/i.test(url);
+    }
+
+    function extractYouTubeId(url) {
+        try {
+            const parsed = new URL(url);
+            const host = parsed.hostname.toLowerCase();
+            if (host === "youtu.be" || host.endsWith(".youtu.be")) {
+                const seg = parsed.pathname.split("/").filter(Boolean)[0];
+                return seg && /^[\w-]{11}$/.test(seg) ? seg : null;
+            }
+            if (host.includes("youtube.com") || host.includes("youtube-nocookie.com")) {
+                const v = parsed.searchParams.get("v");
+                if (v && /^[\w-]{11}$/.test(v)) return v;
+                const m = parsed.pathname.match(/\/(?:shorts|live|embed|v)\/([\w-]{11})/);
+                if (m) return m[1];
+            }
+        } catch (_) {}
+        const fallback = url.match(/(?:youtu\.be\/|youtube(?:-nocookie)?\.com\/(?:embed\/|v\/|watch\?v=|watch\?.+&v=|shorts\/|live\/))([\w-]{11})/);
+        return fallback ? fallback[1] : null;
+    }
+
+    function handleDirectFallback(rawInput, format) {
+        const url = extractFirstUrl(rawInput);
         const isAudio = format === "audio";
         const ytId = extractYouTubeId(url);
         downloadLinkA.removeAttribute("download");
@@ -495,19 +519,23 @@
             downloadLinkA.textContent = `YouTube 通道 1 (${isAudio ? "MP3" : "MP4"})`;
             downloadLinkB.href = `https://www.y2mate.com/youtube/${ytId}`;
             downloadLinkB.textContent = "YouTube 備用通道 2";
-            statusTxt.textContent = "已產生 YouTube / Shorts 直連下載通道：";
+            statusTxt.textContent = "已產生 YouTube / Shorts 直連下載通道（若第三方通道不穩，建議改用「後端引擎」模式）：";
+        } else if (isYouTubeUrl(url)) {
+            downloadBox.style.display = "none";
+            statusTxt.textContent = "此 YouTube 連結（如播放清單或頻道頁）無法透過免伺服器通道解析，且 Cobalt 公開主站已停用 YouTube。請改用「後端引擎」連線您的 FastAPI / 電腦 web_app.py 下載。";
+            return;
         } else {
             downloadLinkA.href = `https://cobalt.tools/#${encodeURIComponent(url)}`;
-            downloadLinkA.textContent = "開啟社群影音解析通道 (Cobalt)";
+            downloadLinkA.textContent = "開啟社群影音解析通道 (Cobalt，不支援 YT)";
             downloadLinkB.href = `https://snapsave.app/zh-tw?url=${encodeURIComponent(url)}`;
             downloadLinkB.textContent = "備用社群下載通道 (SnapSave)";
-            statusTxt.textContent = "已產生社群平台直連下載通道：";
+            statusTxt.textContent = "已產生社群平台直連下載通道（IG / Threads / TikTok / X）：";
         }
         downloadBox.style.display = "block";
     }
 
     function startDownload() {
-        const url = document.getElementById("urlInput").value.trim();
+        const url = extractFirstUrl(document.getElementById("urlInput").value);
         const format = document.getElementById("formatSelect").value;
         if (!url) return alert("請先輸入影片網址！");
 

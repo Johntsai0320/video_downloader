@@ -18,26 +18,41 @@ import yt_dlp
 from .cookies import browser_profile_exists, create_sanitized_meta_cookies
 from .ffmpeg_helper import get_ffmpeg_location
 
-# Canonical quality preset keys and their human-readable labels
+# Canonical quality preset keys and their human-readable labels.
+# Prefer direct https streams over m3u8_native multi-fragment HLS (which can stall on YouTube).
 QUALITY_PRESETS: dict[str, dict[str, str]] = {
     "best": {
         "label": "MP4：最佳畫質 (通用)",
-        "format": "bv*[ext=mp4]+ba[ext=m4a]/bv*+ba/b",
+        "format": (
+            "bv*[ext=mp4][protocol~='^https?$']+ba[ext=m4a][protocol~='^https?$']/"
+            "bv*[protocol~='^https?$']+ba[protocol~='^https?$']/"
+            "bv*[ext=mp4]+ba[ext=m4a]/bv*+ba/b"
+        ),
         "mode": "video",
     },
     "1080p": {
         "label": "MP4：1080p 以下",
-        "format": "bv*[height<=1080][ext=mp4]+ba[ext=m4a]/bv*[height<=1080]+ba/b[height<=1080]/b",
+        "format": (
+            "bv*[height<=1080][ext=mp4][protocol~='^https?$']+ba[ext=m4a][protocol~='^https?$']/"
+            "bv*[height<=1080][protocol~='^https?$']+ba[protocol~='^https?$']/"
+            "bv*[height<=1080][ext=mp4]+ba[ext=m4a]/"
+            "bv*[height<=1080]+ba/b[height<=1080]/b"
+        ),
         "mode": "video",
     },
     "720p": {
         "label": "MP4：720p 以下",
-        "format": "bv*[height<=720][ext=mp4]+ba[ext=m4a]/bv*[height<=720]+ba/b[height<=720]/b",
+        "format": (
+            "bv*[height<=720][ext=mp4][protocol~='^https?$']+ba[ext=m4a][protocol~='^https?$']/"
+            "bv*[height<=720][protocol~='^https?$']+ba[protocol~='^https?$']/"
+            "bv*[height<=720][ext=mp4]+ba[ext=m4a]/"
+            "bv*[height<=720]+ba/b[height<=720]/b"
+        ),
         "mode": "video",
     },
     "audio": {
         "label": "MP3 音訊擷取",
-        "format": "ba/b",
+        "format": "ba[protocol~='^https?$']/ba/b",
         "mode": "audio",
     },
 }
@@ -328,6 +343,7 @@ class UniversalDownloaderEngine:
 
         status = d.get("status")
         if status == "downloading":
+            now = time.monotonic()
             info_dict = d.get("info_dict") or {}
             fmt_id = str(info_dict.get("format_id") or "")
             if fmt_id and fmt_id not in self._logged_format_ids:
@@ -340,35 +356,43 @@ class UniversalDownloaderEngine:
 
             total = d.get("total_bytes") or d.get("total_bytes_estimate") or 0
             downloaded = d.get("downloaded_bytes") or 0
-            frag_idx = d.get("fragment_index")
-            frag_cnt = d.get("fragment_count")
+            frag_idx = d.get("fragment_index") or 0
+            frag_cnt = d.get("fragment_count") or 0
 
             p_index = info_dict.get("playlist_index")
             p_count = info_dict.get("n_entries")
             prefix = f"[{p_index}/{p_count}] " if (p_index and p_count) else ""
 
             if frag_idx and frag_cnt and (total <= 0 or info_dict.get("protocol") == "m3u8_native"):
-                percent = min(100, int((frag_idx / frag_cnt) * 100))
+                percent = min(99, int((frag_idx / frag_cnt) * 100))
                 frag_note = f" (片段 {frag_idx}/{frag_cnt})"
             elif total > 0:
                 percent = min(100, int((downloaded / total) * 100))
-                frag_note = ""
+                frag_note = f" (片段 {frag_idx}/{frag_cnt})" if frag_cnt > 0 else ""
+            elif frag_cnt > 0:
+                percent = min(99, int((frag_idx / frag_cnt) * 100))
+                frag_note = f" (片段 {frag_idx}/{frag_cnt})"
             else:
                 percent = max(0, self._last_percent)
                 frag_note = ""
 
-            now = time.monotonic()
-            if percent != self._last_percent or (now - self._last_status_emit) >= 0.15:
-                self._last_percent = percent
-                self._last_status_emit = now
-                self._emit_progress(percent)
-                speed = (d.get("_speed_str") or "N/A").strip()
-                eta = (d.get("_eta_str") or "N/A").strip()
-                self._emit_status(
-                    f"{prefix}下載進度: {percent}%{frag_note} | 速度: {speed} | 剩餘時間: {eta}"
-                )
+            # Throttle GUI signal updates to avoid flooding the Qt main thread
+            if now - self._last_status_emit < 0.15 and percent == self._last_percent:
+                return
+            if now - self._last_status_emit < 0.05 and percent < 100:
+                return
+
+            self._last_percent = percent
+            self._last_status_emit = now
+            self._emit_progress(percent)
+            speed = (d.get("_speed_str") or "N/A").strip()
+            eta = (d.get("_eta_str") or "N/A").strip()
+            self._emit_status(
+                f"{prefix}下載進度: {percent}%{frag_note} | 速度: {speed} | 剩餘時間: {eta}"
+            )
         elif status == "finished":
-            self._last_percent = 100
+            self._last_status_emit = 0.0
+            self._last_percent = -1
             self._emit_progress(100)
             self._emit_status("音訊與視訊下載完成，FFmpeg 封裝處理中...")
 
@@ -416,9 +440,10 @@ class UniversalDownloaderEngine:
             "logger": _YdlLogger(self._emit_log),
             "quiet": True,
             "no_warnings": False,
+            "noprogress": True,
             "nocheckcertificate": allow_insecure_ssl,
             "noplaylist": not is_playlist,
-            "socket_timeout": 30,
+            "socket_timeout": 15,
             "retries": 10,
             "fragment_retries": 10,
             "file_access_retries": 3,
