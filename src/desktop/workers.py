@@ -101,7 +101,7 @@ class CoreUpdateWorker(QThread):
         try:
             creationflags = subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0
             proc = subprocess.run(
-                [sys.executable, "-m", "pip", "install", "--upgrade", "yt-dlp"],
+                [sys.executable, "-m", "pip", "install", "--upgrade", "yt-dlp[default,curl-cffi,deno]"],
                 capture_output=True,
                 text=True,
                 creationflags=creationflags,
